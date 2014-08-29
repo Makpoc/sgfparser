@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"os"
 	"strings"
 )
@@ -132,7 +133,7 @@ func parseVariation(parentVariation *Variation, sgf []rune) (*Variation, error) 
 		for _, node := range currentNodes {
 			currentVar.Nodes = append(currentVar.Nodes, node)
 		}
-		index += consumed
+		index += consumed + 1 // + 1 to skip discard the variation start/end that stopped node parsing
 	}
 
 	depth--
@@ -158,21 +159,29 @@ func parseNodes(sgfRunes []rune) ([]*Node, int, error) {
 		toIndex = len(sgfRunes) - 1
 	} else if varEnd == -1 {
 		toIndex = int(varStart)
-	} else {
+	} else if varStart == -1 {
 		toIndex = int(varEnd)
+	} else {
+		toIndex = int(math.Min(varEnd, varStart))
 	}
+
+	log.Println("Will parse nodes up to")
+	prettyPrintCharArrow(toIndex, sgfRunes)
 
 	var nodes []*Node
 	var runesConsumed int
 
 	for _, nodeAsString := range strings.Split(string(sgfRunes[:toIndex]), string(NodeSeparator)) {
+		if len(nodeAsString) == 0 {
+			continue
+		}
 		n := &Node{AsString: nodeAsString}
 		log.Printf("Found node %s", n.AsString)
 		runesConsumed += len(nodeAsString)
 		nodes = append(nodes, n)
 	}
 
-	log.Printf("Consumed %d runes after parsing %v", runesConsumed, nodes)
+	log.Printf("Consumed %d runes after parsing %+v", runesConsumed, nodes)
 
 	return nodes, runesConsumed, nil
 }
@@ -222,6 +231,7 @@ func seekVariationEndIndex(sgfRunes []rune) (varEndIndex int, err error) {
 	return
 }
 
+// TODO: Allow for more then one arrow
 func prettyPrintCharArrow(index int, sgfRunes []rune) {
 	log.Printf("%s\n", string(sgfRunes))
 	log.Printf("%s^\n", strings.Repeat(" ", index))
