@@ -157,18 +157,17 @@ func TestParsePropIdent(t *testing.T) {
 	logger.SetLogLevel(logger.OFF)
 }
 
-var propIdentsNeg = []string{
-	"FF",
-	"FFF[",
-	"aF[",
-	"[",
-	" [",
-	"	[",
-	"AA][",
-}
-
 func TestParsePropIdentNegative(t *testing.T) {
 
+	var propIdentsNeg = []string{
+		"FF",
+		"FFF[",
+		"aF[",
+		"[",
+		" [",
+		"	[",
+		"AA][",
+	}
 	//	logger.SetLogLevel(logger.DEBUG)
 
 	for i, current := range propIdentsNeg {
@@ -190,50 +189,53 @@ func TestParsePropIdentNegative(t *testing.T) {
 	logger.SetLogLevel(logger.OFF)
 }
 
-type propValueMap struct {
-	raw    string
-	parsed structures.PropValue
-}
-
-var propValueMatrixPos = []propValueMap{
-	// UcLetter and Digit are ignored for now. (there are no examples in the specs)
-	// None
-	{"[]", structures.PropValue("")},
-	// Number
-	{"[0]", structures.PropValue("0")},
-	{"[-1]", structures.PropValue("-1")},
-	{"[-11]", structures.PropValue("-11")},
-	{"[+1]", structures.PropValue("+1")},   // TODO - do we need to remove the sign?
-	{"[+11]", structures.PropValue("+11")}, // TODO - do we need to remove the sign?
-	{"[1]", structures.PropValue("1")},
-	// Real
-	{"[1.1]", structures.PropValue("1.1")},
-	{"[-2.2]", structures.PropValue("-2.2")},
-	// Double - already tested as number
-	// Color - here - same as (simple)text
-	// Text - same as simple text
-	{"[something]", structures.PropValue("something")},
-	{"[\"some\"thing\"]", structures.PropValue("\"some\"thing\"")},
-	{"[some\\]thing]", structures.PropValue("some]thing")},
-	{"[somet\\hing]", structures.PropValue("something")},
-	{"[some\\\\thing]", structures.PropValue("some\\thing")},
-	{"[some\tthing]", structures.PropValue("some thing")},
-	{"[some\nthing]", structures.PropValue("some\nthing")},
-	{"[some\rthing]", structures.PropValue("some\rthing")},
-	{"[some\r\nthing]", structures.PropValue("some\r\nthing")},
-	{"[some\n\rthing]", structures.PropValue("some\n\rthing")},
-	// Text (from the specs)
-	{
-		"[Meijin NR: yeah, k4 is won\\\nderful\nsweat NR: thank you! :\\)\ndada NR: yup. I like this move too. It's a move only to be expected from a pro. I really like it :)\njansteen 4d: Can anyone\\\n explain [me\\] k4?]",
-		structures.PropValue("Meijin NR: yeah, k4 is wonderful\nsweat NR: thank you! :)\ndada NR: yup. I like this move too. It's a move only to be expected from a pro. I really like it :)\njansteen 4d: Can anyone explain [me] k4?")},
-	{"  [something]  ", structures.PropValue("something")},
-}
-
 func TestParsePropValue(t *testing.T) {
 
+	//////////////
+	// TEST DATA
+	type propValueMap struct {
+		raw    string
+		parsed structures.PropValue
+	}
+
+	var propValueMatrix = []propValueMap{
+		// UcLetter and Digit are ignored for now. (there are no examples in the specs)
+		// None
+		{"[]", structures.PropValue("")},
+		// Number
+		{"[0]", structures.PropValue("0")},
+		{"[-1]", structures.PropValue("-1")},
+		{"[-11]", structures.PropValue("-11")},
+		{"[+1]", structures.PropValue("+1")},   // TODO - do we need to remove the sign?
+		{"[+11]", structures.PropValue("+11")}, // TODO - do we need to remove the sign?
+		{"[1]", structures.PropValue("1")},
+		// Real
+		{"[1.1]", structures.PropValue("1.1")},
+		{"[-2.2]", structures.PropValue("-2.2")},
+		// Double - already tested as number
+		// Color - here - same as (simple)text
+		// Text - same as simple text
+		{"[something]", structures.PropValue("something")},
+		{"[\"some\"thing\"]", structures.PropValue("\"some\"thing\"")},
+		{"[some\\]thing]", structures.PropValue("some]thing")},
+		{"[somet\\hing]", structures.PropValue("something")},
+		{"[some\\\\thing]", structures.PropValue("some\\thing")},
+		{"[some\tthing]", structures.PropValue("some thing")},
+		{"[some\nthing]", structures.PropValue("some\nthing")},
+		{"[some\rthing]", structures.PropValue("some\rthing")},
+		{"[some\r\nthing]", structures.PropValue("some\r\nthing")},
+		{"[some\n\rthing]", structures.PropValue("some\n\rthing")},
+		// Text (from the specs)
+		{
+			"[Meijin NR: yeah, k4 is won\\\nderful\nsweat NR: thank you! :\\)\ndada NR: yup. I like this move too. It's a move only to be expected from a pro. I really like it :)\njansteen 4d: Can anyone\\\n explain [me\\] k4?]",
+			structures.PropValue("Meijin NR: yeah, k4 is wonderful\nsweat NR: thank you! :)\ndada NR: yup. I like this move too. It's a move only to be expected from a pro. I really like it :)\njansteen 4d: Can anyone explain [me] k4?")},
+		{"  [something]  ", structures.PropValue("something")},
+	}
+	//////////////
+	// TEST START
 	//logger.SetLogLevel(logger.DEBUG)
 
-	for i, current := range propValueMatrixPos {
+	for i, current := range propValueMatrix {
 
 		logger.LogDebug(fmt.Sprintf("POSITIVE: Testing with %v", current))
 
@@ -255,23 +257,96 @@ func TestParsePropValue(t *testing.T) {
 	logger.SetLogLevel(logger.OFF)
 }
 
-type propMap struct {
-	raw    string
-	parsed structures.Property
-}
+func TestParsePropValueNeg(t *testing.T) {
 
-var propMatrixPos = []propMap{
-	{"FF[3]", structures.Property{Ident: structures.PropIdent("FF"), Values: []structures.PropValue{structures.PropValue("3")}}},
-	{" FF [ 3 ] ", structures.Property{Ident: structures.PropIdent("FF"), Values: []structures.PropValue{structures.PropValue("3")}}},
-	{"FF[]", structures.Property{Ident: structures.PropIdent("FF"), Values: []structures.PropValue{structures.PropValue("")}}},
-	{"AB[ac][bc]", structures.Property{Ident: structures.PropIdent("AB"), Values: []structures.PropValue{structures.PropValue("ac"), structures.PropValue("bc")}}},
+	//////////////
+	// TEST DATA
+	var propMatrix = []string{
+		"[",
+		"a",
+		"[\\]",
+	}
+
+	//////////////
+	// TEST START
+	logger.SetLogLevel(logger.DEBUG)
+
+	for i, current := range propMatrix {
+		result, err := parser.ParsePropValue(getReader(current))
+
+		if err == nil {
+			t.Errorf("Test %d Failed. Expected an error, got nil", i)
+		}
+		if result != nil {
+			t.Errorf("Test %d Failed. Expected nil as result, but got [%#v]", i, *result)
+		}
+	}
 }
 
 func TestParseProperty(t *testing.T) {
 
+	//////////////
+	// TEST DATA
+	type propMap struct {
+		raw    string
+		parsed structures.Property
+	}
+
+	var propMatrix = []propMap{
+		{
+			"FF[3]",
+			structures.Property{
+				Ident: structures.PropIdent("FF"),
+				Values: []structures.PropValue{
+					structures.PropValue("3"),
+				},
+			},
+		},
+		{
+			" FF [ 3 ] ",
+			structures.Property{
+				Ident: structures.PropIdent("FF"),
+				Values: []structures.PropValue{
+					structures.PropValue(" 3 "),
+				},
+			},
+		},
+		{
+			"FF[]",
+			structures.Property{
+				Ident: structures.PropIdent("FF"),
+				Values: []structures.PropValue{
+					structures.PropValue(""),
+				},
+			},
+		},
+		{
+			"AB[ac][bc]",
+			structures.Property{
+				Ident: structures.PropIdent("AB"),
+				Values: []structures.PropValue{
+					structures.PropValue("ac"),
+					structures.PropValue("bc"),
+				},
+			},
+		},
+		{
+			" AB	[ac] [bc]	",
+			structures.Property{
+				Ident: structures.PropIdent("AB"),
+				Values: []structures.PropValue{
+					structures.PropValue("ac"),
+					structures.PropValue("bc"),
+				},
+			},
+		},
+	}
+
+	//////////////
+	// TEST START
 	logger.SetLogLevel(logger.DEBUG)
 
-	for i, current := range propMatrixPos {
+	for i, current := range propMatrix {
 		reader := getReader(current.raw)
 		result, err := parser.ParseProperty(reader)
 
@@ -280,11 +355,42 @@ func TestParseProperty(t *testing.T) {
 		}
 
 		if result != nil {
-
+			ok := compare(*result, current.parsed)
+			if !ok {
+				t.Errorf("Test %d Failed! Given %s, expected %#v, found %#v", i, current.raw, current.parsed, *result)
+			}
+		} else {
+			t.Errorf("Result is nil!")
 		}
 	}
 
 	logger.SetLogLevel(logger.OFF)
+}
+
+func TestParsePropertyNeg(t *testing.T) {
+
+	//////////////
+	// TEST DATA
+
+	var propMatrix = []string{
+		"FF)",
+		"FF[;",
+	}
+
+	//////////////
+	// TEST START
+	logger.SetLogLevel(logger.DEBUG)
+
+	for i, current := range propMatrix {
+		result, err := parser.ParseProperty(getReader(current))
+
+		if err == nil {
+			t.Errorf("Test %d Failed. Expected an error, got nil", i)
+		}
+		if result != nil {
+			t.Errorf("Test %d Failed. Expected nil as result, but got [%#v]", i, *result)
+		}
+	}
 }
 
 func compare(p1, p2 structures.Property) bool {

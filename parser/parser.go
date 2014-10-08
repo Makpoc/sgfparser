@@ -16,17 +16,46 @@ const (
 	uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 )
 
+var ElementEndError = errors.New("Element's end reached")
+var ParseError = errors.New("Parsing failed")
+
 // Parses a Property. As per specification a property consist of one PropIdent and one or more unordered PropValues:
 // Property = PropIdent PropValue { PropValue }
 // TODO: In the future this method will check if the PropValue(s) have a type, suitable for the PropIdent.
 func ParseProperty(reader *bufio.Reader) (*structures.Property, error) {
-	return nil, nil
+	var prop structures.Property
+
+	ident, err := ParsePropIdent(reader)
+	if err != nil {
+		return nil, errors.New(fmt.Sprintf("Failed to parse Property. %s", err.Error()))
+	}
+
+	prop.Ident = *ident
+
+	for {
+		err := seekToNextPropValue(reader)
+		if err != nil {
+			if err == ElementEndError {
+				break
+			} else {
+				return nil, err
+			}
+		}
+
+		val, err := ParsePropValue(reader)
+		if err != nil {
+			return nil, errors.New(fmt.Sprintf("Failed to parse Property. %s", err.Error()))
+		}
+
+		prop.Values = append(prop.Values, *val)
+
+	}
+	return &prop, nil
 }
 
 // Parses a PropIdent. As per specification PropIdent a word, containing 1 or 2 upper case letter(s). Space, tab, new line etc are also allowed.
 // Validation whether the PropIdent is known or not will not be made here!
 func ParsePropIdent(reader *bufio.Reader) (*structures.PropIdent, error) {
-	logger.LogDebug("Parsing PropIdent..")
 	var propIdent structures.PropIdent
 
 	for {
@@ -96,7 +125,6 @@ func isValid(propIdent structures.PropIdent) bool {
 //
 // This Parser will not recognize the Value Type, but will strip some symbols, which are common for all types (e.g. tabs will become spaces).
 func ParsePropValue(reader *bufio.Reader) (*structures.PropValue, error) {
-	logger.LogDebug("Parsing PropValue..")
 	var propValue structures.PropValue
 
 	// seek to the first PropertyValueStart rune
@@ -170,4 +198,38 @@ func ParsePropValue(reader *bufio.Reader) (*structures.PropValue, error) {
 	}
 
 	return &propValue, nil
+}
+
+// This method will advance the reader to the next occurence of PropertyValueStart within the current Node/GameTree
+// The reader is supposed to be pointing either to the end of a Property or to a place between two PropValues. If it's pointing to the end of a property, this method will return ElementEndError. Otherwise it will either return nil (seek successful) or another error
+func seekToNextPropValue(reader *bufio.Reader) error {
+	for {
+		currRune, _, err := reader.ReadRune()
+		if err != nil {
+			if err == io.EOF {
+				return ElementEndError
+			}
+			return err
+		}
+
+		// stop if next variation or node is reached and return ElementEndError
+		if currRune == structures.NodeSeparator || currRune == structures.GameTreeStart || currRune == structures.GameTreeEnd {
+			err = reader.UnreadRune()
+			if err != nil {
+				return err
+			}
+			return ElementEndError
+		}
+
+		if currRune == structures.PropertyValueStart {
+			err = reader.UnreadRune()
+			if err != nil {
+				return err
+			}
+			return nil
+		}
+	}
+
+	return errors.New("Could not find PropValue end")
+
 }
