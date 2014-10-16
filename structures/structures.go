@@ -74,8 +74,7 @@ func (node Node) String() string {
 
 // Property is the container for Property and value in SGF files. This means that property is B[xx][x] and not just B
 type Property struct {
-	Ident PropIdent
-	// TODO - implement CValueType
+	Ident  PropIdent
 	Values []PropValue
 }
 

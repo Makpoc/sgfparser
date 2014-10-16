@@ -19,6 +19,96 @@ const (
 var ElementEndError = errors.New("Element's end reached")
 var ParseError = errors.New("Parsing failed")
 
+// ParseGameTree parses a single game tree. This function is recursive - if there are sub trees in the current game tree - it will parse them as well and attach them as children to the current tree
+// GameTree = "(" Sequence { GameTree } ")"
+func ParseGameTree(reader *bufio.Reader) (*structures.GameTree, error) {
+	return nil, nil
+}
+
+// ParseSequence parses a sequence of one or more nodes within a GameTree.
+// Sequence = Node { Node }
+func ParseSequence(reader *bufio.Reader) (*structures.Sequence, error) {
+	seq := new(structures.Sequence)
+
+	for {
+
+		currRune, _, err := reader.ReadRune()
+		if err != nil {
+			return nil, err
+		}
+
+		if currRune == structures.GameTreeEnd {
+			break
+		}
+
+		if currRune == structures.NodeSeparator {
+			err = reader.UnreadRune()
+			node, err := ParseNode(reader)
+			if err != nil {
+				return nil, err
+			}
+
+			seq.Nodes = append(seq.Nodes, *node)
+			continue
+		}
+	}
+
+	if len(seq.Nodes) < 1 {
+		return nil, errors.New("Sequence must contain at least one node!")
+	}
+
+	return seq, nil
+}
+
+// ParseNode parses an entire Node with all its properties. The function will search for the first
+// node separator and parse 1 node. It will NOT consume the next node separator (if any) or the game tree end
+// Node = ";" { Property }
+func ParseNode(reader *bufio.Reader) (*structures.Node, error) {
+
+	var node structures.Node
+
+	for {
+		currRune, _, err := reader.ReadRune()
+		if err != nil {
+			return nil, err
+		}
+
+		if currRune == structures.NodeSeparator {
+			// read the next rune to check whether the node contains properties. If it ends with either ; or ) - this node is empty and we will return it.
+			nextRune, _, err := reader.ReadRune()
+			if err != nil {
+				return nil, err
+			}
+
+			if nextRune == structures.NodeSeparator || nextRune == structures.GameTreeEnd {
+				err = reader.UnreadRune()
+				if err != nil {
+					return nil, err
+				}
+
+				// the node will be empty here.
+				return &node, nil
+			}
+
+			err = reader.UnreadRune()
+			if err != nil {
+				return nil, err
+			}
+
+			property, err := ParseProperty(reader)
+			if err != nil {
+				return nil, err
+			}
+
+			node.Properties = append(node.Properties, *property)
+			break
+		}
+	}
+
+	logger.LogDebug(fmt.Sprintf("Node: Parsed %s", node))
+	return &node, nil
+}
+
 // Parses a Property. As per specification a property consist of one PropIdent and one or more unordered PropValues:
 // Property = PropIdent PropValue { PropValue }
 // TODO: In the future this method will check if the PropValue(s) have a type, suitable for the PropIdent.
@@ -48,8 +138,10 @@ func ParseProperty(reader *bufio.Reader) (*structures.Property, error) {
 		}
 
 		prop.Values = append(prop.Values, *val)
-
 	}
+
+	logger.LogDebug(fmt.Sprintf("Property: Parsed %s", prop))
+
 	return &prop, nil
 }
 
@@ -85,6 +177,8 @@ func ParsePropIdent(reader *bufio.Reader) (*structures.PropIdent, error) {
 	propIdent = structures.PropIdent(strings.Trim(string(propIdent), " \t\n"))
 
 	if isValid(propIdent) {
+		logger.LogDebug(fmt.Sprintf("PropIdent: Parsed %s", propIdent))
+
 		return &propIdent, nil
 	} else {
 		return nil, errors.New(fmt.Sprintf("PropIdent %s is invalid!", propIdent))
@@ -151,22 +245,31 @@ func ParsePropValue(reader *bufio.Reader) (*structures.PropValue, error) {
 			}
 		}
 
+		// enter escape only if we are not escaping already
+		if currRune == escapeChar && !doEscape {
+			doEscape = true
+			continue
+		}
+
+		// invalid char - ignore
 		if currRune == unicode.ReplacementChar {
 			logger.LogDebug("Invalid unicode character! Skipping..")
 			continue
 		}
 
+		// replace tabs with spaces (as per spec)
 		if currRune == '\t' {
-			currRune = ' ' // replace tabs with spaces
+			currRune = ' '
 		}
 
+		// if we are in escape mode and we encounter CR or LF
 		if doEscape && (currRune == '\n' || currRune == '\r') {
 			nextRune, _, err := reader.ReadRune()
 			if err != nil {
 				return nil, err
 			}
 
-			// if the current+next rune do not make a CRLF or LFCR sequence - unread it and discard only the single CR or LF
+			// if the current + next rune do not make a CRLF or LFCR sequence - unread it and discard only the single CR or LF
 			if (currRune == '\n' && nextRune != '\r') || (currRune == '\r' && nextRune != '\n') {
 				reader.UnreadRune()
 			}
@@ -176,9 +279,10 @@ func ParsePropValue(reader *bufio.Reader) (*structures.PropValue, error) {
 			continue
 		}
 
-		if currRune == structures.PropertyValueEnd && !doEscape {
+		// if we've reached the end of the property
+		if !doEscape && currRune == structures.PropertyValueEnd {
 			// end parsing the current propValue only if ] is not escaped
-			// Unread the last rune so that the caller knows what has happend
+			// Unread the last rune so that the caller knows that we've reached the propvalue end
 			err = reader.UnreadRune()
 			if err != nil {
 				return nil, err
@@ -186,22 +290,30 @@ func ParsePropValue(reader *bufio.Reader) (*structures.PropValue, error) {
 			break
 		}
 
-		// enter escape only if we are not escaping already
-		if currRune == escapeChar && !doEscape {
-			doEscape = true
-			continue
-		}
-
 		propValue += structures.PropValue(currRune)
 
 		doEscape = false
 	}
 
+	lastRune, _, err := reader.ReadRune()
+	if err != nil {
+		return nil, err
+	}
+
+	if lastRune != structures.PropertyValueEnd {
+		// we've exited the loop for some unusual reason. Return error
+		return nil, errors.New("Property Value seems invalid")
+	}
+
+	logger.LogDebug(fmt.Sprintf("PropValue: Parsed %s", propValue))
+
 	return &propValue, nil
 }
 
 // This method will advance the reader to the next occurence of PropertyValueStart within the current Node/GameTree
-// The reader is supposed to be pointing either to the end of a Property or to a place between two PropValues. If it's pointing to the end of a property, this method will return ElementEndError. Otherwise it will either return nil (seek successful) or another error
+// The reader is supposed to be pointing either to the end of a Property or to a place between two PropValues.
+// If it's pointing to the end of a property, this method will return ElementEndError.
+// Otherwise it will either return nil (seek successful) or another error
 func seekToNextPropValue(reader *bufio.Reader) error {
 	for {
 		currRune, _, err := reader.ReadRune()

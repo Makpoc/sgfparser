@@ -13,7 +13,11 @@ import (
 	"github.com/makpoc/sgfparser/logger"
 )
 
-func TestCompare(t *testing.T) {
+func init() {
+	logger.SetLogLevel(logger.INFO)
+}
+
+func TestCompareProperties(t *testing.T) {
 	type testMap struct {
 		p1       structures.Property
 		p2       structures.Property
@@ -114,7 +118,7 @@ func TestCompare(t *testing.T) {
 	}
 
 	for i, current := range test {
-		equal := compare(current.p1, current.p2)
+		equal := equalProperties(current.p1, current.p2)
 		if equal != current.areEqual {
 			t.Fatalf("FATAL!!!: compare function failed for test %d!!!", i)
 		}
@@ -136,8 +140,6 @@ var propIdentMatrixPos = []propIdentMap{
 
 func TestParsePropIdent(t *testing.T) {
 
-	//logger.SetLogLevel(logger.DEBUG)
-
 	for i, current := range propIdentMatrixPos {
 
 		logger.LogDebug(fmt.Sprintf("POSITIVE: Testing with %v", current))
@@ -154,7 +156,6 @@ func TestParsePropIdent(t *testing.T) {
 		}
 	}
 
-	logger.SetLogLevel(logger.OFF)
 }
 
 func TestParsePropIdentNegative(t *testing.T) {
@@ -168,7 +169,6 @@ func TestParsePropIdentNegative(t *testing.T) {
 		"	[",
 		"AA][",
 	}
-	//	logger.SetLogLevel(logger.DEBUG)
 
 	for i, current := range propIdentsNeg {
 
@@ -186,7 +186,6 @@ func TestParsePropIdentNegative(t *testing.T) {
 		}
 	}
 
-	logger.SetLogLevel(logger.OFF)
 }
 
 func TestParsePropValue(t *testing.T) {
@@ -233,7 +232,6 @@ func TestParsePropValue(t *testing.T) {
 	}
 	//////////////
 	// TEST START
-	//logger.SetLogLevel(logger.DEBUG)
 
 	for i, current := range propValueMatrix {
 
@@ -254,7 +252,6 @@ func TestParsePropValue(t *testing.T) {
 			t.Errorf("Incorrect result! result is nil!")
 		}
 	}
-	logger.SetLogLevel(logger.OFF)
 }
 
 func TestParsePropValueNeg(t *testing.T) {
@@ -269,16 +266,15 @@ func TestParsePropValueNeg(t *testing.T) {
 
 	//////////////
 	// TEST START
-	logger.SetLogLevel(logger.DEBUG)
 
 	for i, current := range propMatrix {
 		result, err := parser.ParsePropValue(getReader(current))
 
 		if err == nil {
-			t.Errorf("Test %d Failed. Expected an error, got nil", i)
+			t.Errorf("Test %d Failed for input %s. Expected an error, got nil", i, current)
 		}
 		if result != nil {
-			t.Errorf("Test %d Failed. Expected nil as result, but got [%#v]", i, *result)
+			t.Errorf("Test %d Failed for input %s. Expected nil as result, but got [%#v]", i, current, *result)
 		}
 	}
 }
@@ -340,11 +336,20 @@ func TestParseProperty(t *testing.T) {
 				},
 			},
 		},
+		{
+			" AB	[\\]ac] [bc]	",
+			structures.Property{
+				Ident: structures.PropIdent("AB"),
+				Values: []structures.PropValue{
+					structures.PropValue("]ac"),
+					structures.PropValue("bc"),
+				},
+			},
+		},
 	}
 
 	//////////////
 	// TEST START
-	logger.SetLogLevel(logger.DEBUG)
 
 	for i, current := range propMatrix {
 		reader := getReader(current.raw)
@@ -355,7 +360,7 @@ func TestParseProperty(t *testing.T) {
 		}
 
 		if result != nil {
-			ok := compare(*result, current.parsed)
+			ok := equalProperties(*result, current.parsed)
 			if !ok {
 				t.Errorf("Test %d Failed! Given %s, expected %#v, found %#v", i, current.raw, current.parsed, *result)
 			}
@@ -364,7 +369,6 @@ func TestParseProperty(t *testing.T) {
 		}
 	}
 
-	logger.SetLogLevel(logger.OFF)
 }
 
 func TestParsePropertyNeg(t *testing.T) {
@@ -379,7 +383,6 @@ func TestParsePropertyNeg(t *testing.T) {
 
 	//////////////
 	// TEST START
-	logger.SetLogLevel(logger.DEBUG)
 
 	for i, current := range propMatrix {
 		result, err := parser.ParseProperty(getReader(current))
@@ -393,7 +396,349 @@ func TestParsePropertyNeg(t *testing.T) {
 	}
 }
 
-func compare(p1, p2 structures.Property) bool {
+func TestParseNode(t *testing.T) {
+	//////////////
+	// TEST DATA
+	type nodeStruct struct {
+		raw    string
+		parsed structures.Node
+	}
+
+	var nodesMatrix = []nodeStruct{
+		nodeStruct{
+			";FF[AA]",
+			structures.Node{
+				Properties: []structures.Property{
+					structures.Property{
+						Ident: structures.PropIdent("FF"),
+						Values: []structures.PropValue{
+							structures.PropValue("AA"),
+						},
+					},
+				},
+			},
+		},
+		nodeStruct{
+			";FF[AA][qwe]",
+			structures.Node{
+				Properties: []structures.Property{
+					structures.Property{
+						Ident: structures.PropIdent("FF"),
+						Values: []structures.PropValue{
+							structures.PropValue("AA"),
+							structures.PropValue("qwe"),
+						},
+					},
+				},
+			},
+		},
+		nodeStruct{
+			";C[]",
+			structures.Node{
+				Properties: []structures.Property{
+					structures.Property{
+						Ident: structures.PropIdent("C"),
+						Values: []structures.PropValue{
+							structures.PropValue(""),
+						},
+					},
+				},
+			},
+		},
+		nodeStruct{
+			"; FF [AA] [qwe] ",
+			structures.Node{
+				Properties: []structures.Property{
+					structures.Property{
+						Ident: structures.PropIdent("FF"),
+						Values: []structures.PropValue{
+							structures.PropValue("AA"),
+							structures.PropValue("qwe"),
+						},
+					},
+				},
+			},
+		},
+		nodeStruct{
+			"(;)",
+			structures.Node{
+				Properties: []structures.Property{},
+			},
+		},
+		nodeStruct{
+			"(;;)",
+			structures.Node{
+				Properties: []structures.Property{},
+			},
+		},
+	}
+
+	//////////////
+	// TEST START
+
+	for i, current := range nodesMatrix {
+		reader := getReader(current.raw)
+		result, err := parser.ParseNode(reader)
+
+		if err != nil {
+			t.Errorf("Test %d returned error! %s", i, err.Error())
+		}
+
+		if result == nil {
+			t.Errorf("Result is nil!")
+			return
+		}
+		expectedLen, actualLen := len(current.parsed.Properties), len(result.Properties)
+		if expectedLen != actualLen {
+			t.Errorf("Expected number of properties: %d, actual: %d", expectedLen, actualLen)
+			return
+		}
+		for i, prop := range current.parsed.Properties {
+			ok := equalProperties(prop, result.Properties[i])
+			if !ok {
+				t.Errorf("Test %d failed! Given %s, \nexpected \n%#v, \nfound \n%#v", i, current.raw, current.parsed, *result)
+			}
+		}
+	}
+}
+
+func TestParseNodeNeg(t *testing.T) {
+
+	// TEST DATA
+	type nodeStruct struct {
+		raw    string
+		parsed structures.Node
+	}
+
+	var nodesMatrix = []nodeStruct{
+		nodeStruct{
+			"FF[AA]",
+			structures.Node{
+				Properties: []structures.Property{
+					structures.Property{
+						Ident: structures.PropIdent("FF"),
+						Values: []structures.PropValue{
+							structures.PropValue("AA"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for i, current := range nodesMatrix {
+		reader := getReader(current.raw)
+		result, err := parser.ParseNode(reader)
+
+		if err == nil {
+			t.Errorf("%d: Test expected to return error but did not!", i)
+			if result != nil {
+				t.Errorf(fmt.Sprintf("Instead the returned value was: \n%#v", *result))
+			}
+		}
+	}
+}
+
+func TestParseSequence(t *testing.T) {
+
+	/////////////
+	// TEST DATA
+
+	type sequenceStruct struct {
+		raw    string
+		parsed structures.Sequence
+	}
+
+	var sequenceMatrix = []sequenceStruct{
+		sequenceStruct{
+			// single node
+			"(;FF[AA])",
+			structures.Sequence{
+				Nodes: []structures.Node{
+					structures.Node{
+						Properties: []structures.Property{
+							structures.Property{
+								Ident: structures.PropIdent("FF"),
+								Values: []structures.PropValue{
+									structures.PropValue("AA"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		sequenceStruct{
+			// multiple nodes
+			"(;FF[AA];C[BB][asd])",
+			structures.Sequence{
+				Nodes: []structures.Node{
+					structures.Node{
+						Properties: []structures.Property{
+							structures.Property{
+								Ident: structures.PropIdent("FF"),
+								Values: []structures.PropValue{
+									structures.PropValue("AA"),
+								},
+							},
+						},
+					},
+					structures.Node{
+						Properties: []structures.Property{
+							structures.Property{
+								Ident: structures.PropIdent("C"),
+								Values: []structures.PropValue{
+									structures.PropValue("BB"),
+									structures.PropValue("asd"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		sequenceStruct{
+			// handle spaces
+			"( ; FF[AA] ; C[BB][asd] )",
+			structures.Sequence{
+				Nodes: []structures.Node{
+					structures.Node{
+						Properties: []structures.Property{
+							structures.Property{
+								Ident: structures.PropIdent("FF"),
+								Values: []structures.PropValue{
+									structures.PropValue("AA"),
+								},
+							},
+						},
+					},
+					structures.Node{
+						Properties: []structures.Property{
+							structures.Property{
+								Ident: structures.PropIdent("C"),
+								Values: []structures.PropValue{
+									structures.PropValue("BB"),
+									structures.PropValue("asd"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		sequenceStruct{
+			// will parse only one sequence - the first one
+			"(;FF[AA])(;C[BB])",
+			structures.Sequence{
+				Nodes: []structures.Node{
+					structures.Node{
+						Properties: []structures.Property{
+							structures.Property{
+								Ident: structures.PropIdent("FF"),
+								Values: []structures.PropValue{
+									structures.PropValue("AA"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		sequenceStruct{
+			// parse the empty sequence
+			"(;)",
+			structures.Sequence{
+				Nodes: []structures.Node{
+					structures.Node{
+						Properties: []structures.Property{},
+					},
+				},
+			},
+		},
+	}
+	/////////////
+	// TEST START
+
+	for i, current := range sequenceMatrix {
+		reader := getReader(current.raw)
+		result, err := parser.ParseSequence(reader)
+
+		if err != nil {
+			t.Errorf("Test %d returned error! %s", i, err.Error())
+		}
+
+		if result == nil {
+			t.Errorf("Result is nil!")
+			return
+		}
+		if !equalSequence(current.parsed, *result) {
+			t.Errorf("Test %d failed! Given %s, \nexpected \n%#v, \nfound \n%#v", i, current.raw, current.parsed, *result)
+		}
+	}
+}
+
+func TestParseGameTree(t *testing.T) {
+	/////////////
+	// TEST DATA
+	type treeStruct struct {
+		raw    string
+		parsed structures.GameTree
+	}
+
+	var treeMatrix = []treeStruct{
+		treeStruct{
+			"(;FF[AA];C[bbb])",
+			structures.GameTree{
+				Sequence: structures.Sequence{
+					Nodes: []structures.Node{
+						structures.Node{
+							Properties: []structures.Property{
+								structures.Property{
+									Ident: structures.PropIdent("FF"),
+									Values: []structures.PropValue{
+										structures.PropValue("AA"),
+									},
+								},
+							},
+						},
+						structures.Node{
+							Properties: []structures.Property{
+								structures.Property{
+									Ident: structures.PropIdent("C"),
+									Values: []structures.PropValue{
+										structures.PropValue("bbb"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	//////////////
+	// TEST START
+	for i, current := range treeMatrix {
+		reader := getReader(current.raw)
+		result, err := parser.ParseGameTree(reader)
+
+		if err != nil {
+			t.Errorf("Test %d returned error! %s", i, err.Error())
+		}
+
+		if result == nil {
+			t.Errorf("Result is nil!")
+			return
+		}
+
+		if !equalSequence(current.parsed.Sequence, result.Sequence) {
+			t.Errorf("Test %d failed! Given %s, \nexpected \n%#v, \nfound \n%#v", i, current.raw, current.parsed, *result)
+		}
+	}
+}
+
+func equalProperties(p1, p2 structures.Property) bool {
 	if &p1 == &p2 {
 		// same object
 		return true
@@ -423,6 +768,53 @@ func compare(p1, p2 structures.Property) bool {
 		}
 	}
 
+	return true
+}
+
+func equalNode(n1, n2 structures.Node) bool {
+	if &n1 == &n2 {
+		// same object
+		return true
+	}
+
+	expectedLen, actualLen := len(n1.Properties), len(n2.Properties)
+	if expectedLen != actualLen {
+		return false
+	}
+	for i, prop := range n1.Properties {
+		if !equalProperties(prop, n2.Properties[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func equalSequence(s1, s2 structures.Sequence) bool {
+	if &s1 == &s2 {
+		// same object
+		return true
+	}
+
+	// Make sure that we have the same number of nodes in the sequences
+	expectedNodesLen, actualNodesLen := len(s1.Nodes), len(s2.Nodes)
+	if expectedNodesLen != actualNodesLen {
+		return false
+	}
+
+	for i, node := range s1.Nodes {
+		// Make sure that we have the same number of properties in each node
+		expectedPropsLen, actualPropsLen := len(node.Properties), len(s2.Nodes[i].Properties)
+		if expectedPropsLen != actualPropsLen {
+			return false
+		}
+
+		// compare each property in each node
+		for j, prop := range node.Properties {
+			if !equalProperties(prop, s2.Nodes[i].Properties[j]) {
+				return false
+			}
+		}
+	}
 	return true
 }
 

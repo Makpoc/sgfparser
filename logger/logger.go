@@ -14,7 +14,7 @@ const (
 
 type LogLevel int
 
-var currentLevel = INFO
+var currentLevel = OFF
 
 func SetLogLevel(level LogLevel) {
 	currentLevel = level
