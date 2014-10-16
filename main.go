@@ -24,8 +24,9 @@ func main() {
 	}
 
 	defer func() {
-		err := file.Close()
-		logger.LogError("Failed to close file!")
+		if err := file.Close(); err != nil {
+			logger.LogError("Failed to close file!")
+		}
 	}()
 
 	/*
