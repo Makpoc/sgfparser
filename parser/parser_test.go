@@ -552,7 +552,7 @@ func TestParseSequence(t *testing.T) {
 	var sequenceMatrix = []sequenceStruct{
 		sequenceStruct{
 			// single node
-			"(;FF[AA])",
+			";FF[AA])",
 			structures.Sequence{
 				Nodes: []structures.Node{
 					structures.Node{
@@ -570,7 +570,7 @@ func TestParseSequence(t *testing.T) {
 		},
 		sequenceStruct{
 			// multiple nodes
-			"(;FF[AA];C[BB][asd])",
+			";FF[AA];C[BB][asd])",
 			structures.Sequence{
 				Nodes: []structures.Node{
 					structures.Node{
@@ -599,7 +599,7 @@ func TestParseSequence(t *testing.T) {
 		},
 		sequenceStruct{
 			// handle spaces
-			"( ; FF[AA] ; C[BB][asd] )",
+			" ; FF[AA] ; C[BB][asd] )",
 			structures.Sequence{
 				Nodes: []structures.Node{
 					structures.Node{
@@ -628,7 +628,7 @@ func TestParseSequence(t *testing.T) {
 		},
 		sequenceStruct{
 			// will parse only one sequence - the first one
-			"(;FF[AA])(;C[BB])",
+			";FF[AA](;C[BB])",
 			structures.Sequence{
 				Nodes: []structures.Node{
 					structures.Node{
@@ -646,7 +646,7 @@ func TestParseSequence(t *testing.T) {
 		},
 		sequenceStruct{
 			// parse the empty sequence
-			"(;)",
+			";)",
 			structures.Sequence{
 				Nodes: []structures.Node{
 					structures.Node{
@@ -668,11 +668,11 @@ func TestParseSequence(t *testing.T) {
 		}
 
 		if result == nil {
-			t.Errorf("Result is nil!")
+			t.Errorf("Test %d failed! Given %s, \nExpected %#v, but\nResult is nil!", i, current.raw, current.parsed)
 			return
 		}
 		if !equalSequence(current.parsed, *result) {
-			t.Errorf("Test %d failed! Given %s, \nexpected \n%#v, \nfound \n%#v", i, current.raw, current.parsed, *result)
+			t.Errorf("Test %d failed! Given %s, \nExpected \n%#v, \nfound \n%#v", i, current.raw, current.parsed, *result)
 		}
 	}
 }

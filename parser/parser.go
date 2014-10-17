@@ -19,10 +19,59 @@ const (
 var ElementEndError = errors.New("Element's end reached")
 var ParseError = errors.New("Parsing failed")
 
-// ParseGameTree parses a single game tree. This function is recursive - if there are sub trees in the current game tree - it will parse them as well and attach them as children to the current tree
+// ParseGameTree parses a game tree. This function is recursive - if there are sub trees in
+// the current game tree - it will parse them as well and attach them as children to the current tree
+//
 // GameTree = "(" Sequence { GameTree } ")"
 func ParseGameTree(reader *bufio.Reader) (*structures.GameTree, error) {
-	return nil, nil
+	gTree := new(structures.GameTree)
+
+	// spin to the current tree start
+	for {
+		currRune, _, err := reader.ReadRune()
+		if err != nil {
+			return nil, err
+		}
+		if currRune == structures.GameTreeStart {
+			break
+		}
+	}
+
+	// The sequence for the current tree
+	seq, err := ParseSequence(reader)
+	if err != nil {
+		return nil, err
+	}
+	gTree.Sequence = *seq
+
+	for {
+		currRune, _, err := reader.ReadRune()
+		if err != nil {
+			return nil, err
+		}
+
+		if currRune == structures.GameTreeStart {
+			err = reader.UnreadRune()
+			if err != nil {
+				return nil, err
+			}
+			subTree, err := ParseGameTree(reader)
+			if err != nil {
+				return nil, err
+			}
+
+			gTree.Children = append(gTree.Children, *subTree)
+			subTree.Parent = gTree
+			break
+		}
+
+		if currRune == structures.GameTreeEnd {
+			break
+		}
+	}
+
+	return gTree, nil
+
 }
 
 // ParseSequence parses a sequence of one or more nodes within a GameTree.
@@ -38,6 +87,15 @@ func ParseSequence(reader *bufio.Reader) (*structures.Sequence, error) {
 		}
 
 		if currRune == structures.GameTreeEnd {
+			break
+		}
+
+		// for subtrees
+		if currRune == structures.GameTreeStart {
+			err = reader.UnreadRune()
+			if err != nil {
+				return nil, err
+			}
 			break
 		}
 
