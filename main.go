@@ -9,7 +9,6 @@ import (
 	"github.com/makpoc/sgfparser/logger"
 	"github.com/makpoc/sgfparser/parser"
 	"github.com/makpoc/sgfparser/structures"
-	"runtime"
 )
 
 func printUsage() {

@@ -172,28 +172,6 @@ func ParseNode(reader io.RuneScanner) (*structures.Node, error) {
 		}
 
 		if currRune == structures.NodeSeparator {
-			// read the next rune to check whether the node contains properties.
-			nextRune, _, err := reader.ReadRune()
-			if err != nil {
-				return nil, err
-			}
-
-			// If it ends with either ";",  "(" or ")" this node is empty and we will return it.
-			if nextRune == structures.NodeSeparator || nextRune == structures.GameTreeStart || nextRune == structures.GameTreeEnd {
-				err = reader.UnreadRune()
-				if err != nil {
-					return nil, err
-				}
-
-				// the node will be empty here.
-				return &node, nil
-			}
-
-			err = reader.UnreadRune()
-			if err != nil {
-				return nil, err
-			}
-
 			property, err := ParseProperty(reader)
 			if err != nil {
 				if err == EmptyNodeError {
@@ -221,7 +199,7 @@ func ParseProperty(reader io.RuneScanner) (*structures.Property, error) {
 		if err == EmptyNodeError {
 			return nil, err
 		}
-		return nil, errors.New(fmt.Sprintf("Failed to parse Property. %s", err.Error()))
+		return nil, errors.New(fmt.Sprintf("Failed to parse PropIdent. %s", err.Error()))
 	}
 
 	prop.Ident = *ident
@@ -238,7 +216,7 @@ func ParseProperty(reader io.RuneScanner) (*structures.Property, error) {
 
 		val, err := ParsePropValue(reader)
 		if err != nil {
-			return nil, errors.New(fmt.Sprintf("Failed to parse Property. %s", err.Error()))
+			return nil, errors.New(fmt.Sprintf("Failed to parse PropValue. %s", err.Error()))
 		}
 
 		prop.Values = append(prop.Values, *val)
@@ -263,7 +241,11 @@ func ParsePropIdent(reader io.RuneScanner) (*structures.PropIdent, error) {
 			continue
 		}
 
-		if currRune == structures.NodeSeparator {
+		if currRune == structures.NodeSeparator || currRune == structures.GameTreeStart || currRune == structures.GameTreeEnd {
+			err = reader.UnreadRune()
+			if err != nil {
+				return nil, err
+			}
 			return nil, EmptyNodeError
 		}
 

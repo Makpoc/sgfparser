@@ -485,7 +485,7 @@ func TestParseNode(t *testing.T) {
 		result, err := parser.ParseNode(reader)
 
 		if err != nil {
-			t.Errorf("Test %d returned error! %s", i, err.Error())
+			t.Errorf("Test %d returned error %s!\nGiven: %s,\nExpected: %#v", i, err.Error(), current.raw, current.parsed)
 		}
 
 		if result == nil {
@@ -1066,7 +1066,7 @@ func compareGameTree(g1, g2 structures.GameTree) error {
 }
 
 func getReader(raw string) io.RuneScanner {
-	//	return EchoReader{Reader: bufio.NewReader(strings.NewReader(raw))}
+	//return EchoReader{Reader: bufio.NewReader(strings.NewReader(raw))}
 	return bufio.NewReader(strings.NewReader(raw))
 }
 
@@ -1091,10 +1091,13 @@ func (r EchoReader) ReadRune() (char rune, size int, err error) {
 
 func (r EchoReader) UnreadRune() (err error) {
 	err = r.Reader.UnreadRune()
+	_, file, line, _ := runtime.Caller(1)
 	if err != nil {
 		fmt.Printf("EchoReader: error: %s\n", err.Error())
+		fmt.Printf("%s: %d\n", file, line)
 		return
 	}
 	fmt.Println("EchoReader: unread successful!")
+	fmt.Printf("%s: %d\n", file, line)
 	return
 }
