@@ -16,7 +16,7 @@ const (
 )
 
 type Collection struct {
-	GameTrees []GameTree
+	GameTrees []*GameTree
 }
 
 func (collection Collection) String() string {
@@ -31,7 +31,7 @@ func (collection Collection) String() string {
 
 type GameTree struct {
 	Parent   *GameTree
-	Children []GameTree
+	Children []*GameTree
 	Sequence Sequence
 }
 

@@ -2,7 +2,10 @@ package parser_test
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"io"
+	"runtime"
 	"testing"
 
 	"github.com/makpoc/sgfparser/parser"
@@ -19,9 +22,9 @@ func init() {
 
 func TestCompareProperties(t *testing.T) {
 	type testMap struct {
-		p1       structures.Property
-		p2       structures.Property
-		areEqual bool
+		p1      structures.Property
+		p2      structures.Property
+		isError bool
 	}
 
 	var test = []testMap{
@@ -35,7 +38,7 @@ func TestCompareProperties(t *testing.T) {
 				Ident:  structures.PropIdent("AB"),
 				Values: []structures.PropValue{structures.PropValue("ac"), structures.PropValue("bc")},
 			},
-			true,
+			false,
 		},
 		{
 			structures.Property{
@@ -46,7 +49,7 @@ func TestCompareProperties(t *testing.T) {
 				Ident:  structures.PropIdent("AB"),
 				Values: []structures.PropValue{structures.PropValue("ac"), structures.PropValue("bc")},
 			},
-			true,
+			false,
 		},
 		{
 			structures.Property{
@@ -57,7 +60,7 @@ func TestCompareProperties(t *testing.T) {
 				Ident:  structures.PropIdent("AB"),
 				Values: []structures.PropValue{structures.PropValue("ac"), structures.PropValue("bc")},
 			},
-			true,
+			false,
 		},
 		{
 			structures.Property{
@@ -68,7 +71,7 @@ func TestCompareProperties(t *testing.T) {
 				Ident:  structures.PropIdent("AB"),
 				Values: []structures.PropValue{structures.PropValue("ac"), structures.PropValue("bc"), structures.PropValue("ac")},
 			},
-			true,
+			false,
 		},
 		// Negative
 		{
@@ -80,7 +83,7 @@ func TestCompareProperties(t *testing.T) {
 				Ident:  structures.PropIdent("AB"),
 				Values: []structures.PropValue{structures.PropValue("ac")},
 			},
-			false,
+			true,
 		},
 		{
 			structures.Property{
@@ -91,7 +94,7 @@ func TestCompareProperties(t *testing.T) {
 				Ident:  structures.PropIdent("AB"),
 				Values: []structures.PropValue{structures.PropValue("ac"), structures.PropValue("bc")},
 			},
-			false,
+			true,
 		},
 		{
 			structures.Property{
@@ -102,7 +105,7 @@ func TestCompareProperties(t *testing.T) {
 				Ident:  structures.PropIdent("AB"),
 				Values: []structures.PropValue{structures.PropValue("ac"), structures.PropValue("bc")},
 			},
-			false,
+			true,
 		},
 		{
 			structures.Property{
@@ -113,16 +116,17 @@ func TestCompareProperties(t *testing.T) {
 				Ident:  structures.PropIdent("AB"),
 				Values: []structures.PropValue{structures.PropValue("ac"), structures.PropValue("bc"), structures.PropValue("bc")},
 			},
-			false,
+			true,
 		},
 	}
 
 	for i, current := range test {
-		equal := equalProperties(current.p1, current.p2)
-		if equal != current.areEqual {
-			t.Fatalf("FATAL!!!: compare function failed for test %d!!!", i)
+		compareError := compareProperties(current.p1, current.p2)
+		// if it's supposed to be error, but it's not - fail
+		// if it's not supposed to be error, but it is - fail
+		if (current.isError && compareError == nil) || (!current.isError && compareError != nil) {
+			t.Errorf("Test %d failed! Expected error: %v, but it was %v", i, current.isError, compareError != nil)
 		}
-
 	}
 }
 
@@ -290,7 +294,7 @@ func TestParseProperty(t *testing.T) {
 
 	var propMatrix = []propMap{
 		{
-			"FF[3]",
+			"FF[3])",
 			structures.Property{
 				Ident: structures.PropIdent("FF"),
 				Values: []structures.PropValue{
@@ -299,7 +303,7 @@ func TestParseProperty(t *testing.T) {
 			},
 		},
 		{
-			" FF [ 3 ] ",
+			" FF [ 3 ] )",
 			structures.Property{
 				Ident: structures.PropIdent("FF"),
 				Values: []structures.PropValue{
@@ -308,7 +312,7 @@ func TestParseProperty(t *testing.T) {
 			},
 		},
 		{
-			"FF[]",
+			"FF[])",
 			structures.Property{
 				Ident: structures.PropIdent("FF"),
 				Values: []structures.PropValue{
@@ -317,7 +321,7 @@ func TestParseProperty(t *testing.T) {
 			},
 		},
 		{
-			"AB[ac][bc]",
+			"AB[ac][bc])",
 			structures.Property{
 				Ident: structures.PropIdent("AB"),
 				Values: []structures.PropValue{
@@ -327,7 +331,7 @@ func TestParseProperty(t *testing.T) {
 			},
 		},
 		{
-			" AB	[ac] [bc]	",
+			" AB	[ac] [bc]	)",
 			structures.Property{
 				Ident: structures.PropIdent("AB"),
 				Values: []structures.PropValue{
@@ -337,7 +341,7 @@ func TestParseProperty(t *testing.T) {
 			},
 		},
 		{
-			" AB	[\\]ac] [bc]	",
+			" AB	[\\]ac] [bc]	)",
 			structures.Property{
 				Ident: structures.PropIdent("AB"),
 				Values: []structures.PropValue{
@@ -359,13 +363,13 @@ func TestParseProperty(t *testing.T) {
 			t.Errorf("Test %d returned error! %s", i, err.Error())
 		}
 
-		if result != nil {
-			ok := equalProperties(*result, current.parsed)
-			if !ok {
-				t.Errorf("Test %d Failed! Given %s, expected %#v, found %#v", i, current.raw, current.parsed, *result)
-			}
-		} else {
+		if result == nil {
 			t.Errorf("Result is nil!")
+			return
+		}
+
+		if err := compareProperties(*result, current.parsed); err != nil {
+			t.Errorf("Test %d Failed! Error was %s!\nGiven %s, \nExpected %#v,\nFound %#v", i, err.Error(), current.raw, current.parsed, *result)
 		}
 	}
 
@@ -406,7 +410,7 @@ func TestParseNode(t *testing.T) {
 
 	var nodesMatrix = []nodeStruct{
 		nodeStruct{
-			";FF[AA]",
+			"(;FF[AA])",
 			structures.Node{
 				Properties: []structures.Property{
 					structures.Property{
@@ -419,7 +423,7 @@ func TestParseNode(t *testing.T) {
 			},
 		},
 		nodeStruct{
-			";FF[AA][qwe]",
+			"(;FF[AA][qwe])",
 			structures.Node{
 				Properties: []structures.Property{
 					structures.Property{
@@ -433,7 +437,7 @@ func TestParseNode(t *testing.T) {
 			},
 		},
 		nodeStruct{
-			";C[]",
+			"(;C[])",
 			structures.Node{
 				Properties: []structures.Property{
 					structures.Property{
@@ -446,7 +450,7 @@ func TestParseNode(t *testing.T) {
 			},
 		},
 		nodeStruct{
-			"; FF [AA] [qwe] ",
+			"(; FF [AA] [qwe] )",
 			structures.Node{
 				Properties: []structures.Property{
 					structures.Property{
@@ -494,9 +498,8 @@ func TestParseNode(t *testing.T) {
 			return
 		}
 		for i, prop := range current.parsed.Properties {
-			ok := equalProperties(prop, result.Properties[i])
-			if !ok {
-				t.Errorf("Test %d failed! Given %s, \nexpected \n%#v, \nfound \n%#v", i, current.raw, current.parsed, *result)
+			if err := compareProperties(prop, result.Properties[i]); err != nil {
+				t.Errorf("Test %d failed. Error was %s!\nGiven %s, \nExpected \n%#v, \nFound \n%#v\n", i, err.Error(), current.raw, current.parsed, *result)
 			}
 		}
 	}
@@ -671,8 +674,8 @@ func TestParseSequence(t *testing.T) {
 			t.Errorf("Test %d failed! Given %s, \nExpected %#v, but\nResult is nil!", i, current.raw, current.parsed)
 			return
 		}
-		if !equalSequence(current.parsed, *result) {
-			t.Errorf("Test %d failed! Given %s, \nExpected \n%#v, \nfound \n%#v", i, current.raw, current.parsed, *result)
+		if err := compareSequence(current.parsed, *result); err != nil {
+			t.Errorf("Test %d failed! Error is: %s!\nGiven %s, \nExpected \n%#v, \nFound \n%#v", i, err.Error(), current.raw, current.parsed, *result)
 		}
 	}
 }
@@ -684,6 +687,8 @@ func TestParseGameTree(t *testing.T) {
 		raw    string
 		parsed structures.GameTree
 	}
+
+	logger.SetLogLevel(logger.DEBUG)
 
 	var treeMatrix = []treeStruct{
 		treeStruct{
@@ -715,6 +720,226 @@ func TestParseGameTree(t *testing.T) {
 				},
 			},
 		},
+		treeStruct{
+			"(;)",
+			structures.GameTree{
+				Sequence: structures.Sequence{
+					Nodes: []structures.Node{
+						structures.Node{
+							Properties: []structures.Property{},
+						},
+					},
+				},
+			},
+		},
+		treeStruct{
+			"(;;;(;;;;)(;;)(;;;(;;)(;)))",
+			//->(;;;(;;;;)(;;)(;;;(;;)(;)))<-
+			structures.GameTree{
+				Sequence: structures.Sequence{
+					Nodes: []structures.Node{
+						structures.Node{
+							Properties: []structures.Property{},
+						},
+						structures.Node{
+							Properties: []structures.Property{},
+						},
+						structures.Node{
+							Properties: []structures.Property{},
+						},
+					},
+				},
+				Children: []*structures.GameTree{
+					//(;;;->(;;;;)<-(;;)(;;;(;;)(;)))
+					&structures.GameTree{
+						Sequence: structures.Sequence{
+							Nodes: []structures.Node{
+								structures.Node{
+									Properties: []structures.Property{},
+								},
+								structures.Node{
+									Properties: []structures.Property{},
+								},
+								structures.Node{
+									Properties: []structures.Property{},
+								},
+								structures.Node{
+									Properties: []structures.Property{},
+								},
+							},
+						},
+					},
+					//(;;;(;;;;)->(;;)<-(;;;(;;)(;)))
+					&structures.GameTree{
+						Sequence: structures.Sequence{
+							Nodes: []structures.Node{
+								structures.Node{
+									Properties: []structures.Property{},
+								},
+								structures.Node{
+									Properties: []structures.Property{},
+								},
+							},
+						},
+					},
+					//(;;;(;;;;)(;;)->(;;;(;;)(;))<-)
+					&structures.GameTree{
+						Sequence: structures.Sequence{
+							Nodes: []structures.Node{
+								structures.Node{
+									Properties: []structures.Property{},
+								},
+								structures.Node{
+									Properties: []structures.Property{},
+								},
+								structures.Node{
+									Properties: []structures.Property{},
+								},
+							},
+						},
+						Children: []*structures.GameTree{
+							//(;;;(;;;;)(;;)(;;;->(;;)<-(;)))
+							&structures.GameTree{
+								Sequence: structures.Sequence{
+									Nodes: []structures.Node{
+										structures.Node{
+											Properties: []structures.Property{},
+										},
+										structures.Node{
+											Properties: []structures.Property{},
+										},
+									},
+								},
+							},
+							//(;;;(;;;;)(;;)(;;;(;;)->(;)<-))
+							&structures.GameTree{
+								Sequence: structures.Sequence{
+									Nodes: []structures.Node{
+										structures.Node{
+											Properties: []structures.Property{},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		treeStruct{
+			"(;(;))",
+			structures.GameTree{
+				Sequence: structures.Sequence{
+					Nodes: []structures.Node{
+						structures.Node{
+							Properties: []structures.Property{},
+						},
+					},
+				},
+				Children: []*structures.GameTree{
+					&structures.GameTree{
+						Sequence: structures.Sequence{
+							Nodes: []structures.Node{
+								structures.Node{
+									Properties: []structures.Property{},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		treeStruct{
+			"(;(;(;)))",
+			structures.GameTree{
+				Sequence: structures.Sequence{
+					Nodes: []structures.Node{
+						structures.Node{
+							Properties: []structures.Property{},
+						},
+					},
+				},
+				Children: []*structures.GameTree{
+					&structures.GameTree{
+						Sequence: structures.Sequence{
+							Nodes: []structures.Node{
+								structures.Node{
+									Properties: []structures.Property{},
+								},
+							},
+						},
+						Children: []*structures.GameTree{
+							&structures.GameTree{
+								Sequence: structures.Sequence{
+									Nodes: []structures.Node{
+										structures.Node{
+											Properties: []structures.Property{},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		treeStruct{
+			"(;FF[AA])",
+			structures.GameTree{
+				Sequence: structures.Sequence{
+					Nodes: []structures.Node{
+						structures.Node{
+							Properties: []structures.Property{
+								structures.Property{
+									Ident: structures.PropIdent("FF"),
+									Values: []structures.PropValue{
+										structures.PropValue("AA"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		treeStruct{
+			"(;FF[AA](;C[bbb]))",
+			structures.GameTree{
+				Sequence: structures.Sequence{
+					Nodes: []structures.Node{
+						structures.Node{
+							Properties: []structures.Property{
+								structures.Property{
+									Ident: structures.PropIdent("FF"),
+									Values: []structures.PropValue{
+										structures.PropValue("AA"),
+									},
+								},
+							},
+						},
+					},
+				},
+
+				Children: []*structures.GameTree{
+					&structures.GameTree{
+						Sequence: structures.Sequence{
+							Nodes: []structures.Node{
+								structures.Node{
+									Properties: []structures.Property{
+										structures.Property{
+											Ident: structures.PropIdent("C"),
+											Values: []structures.PropValue{
+												structures.PropValue("bbb"),
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	//////////////
@@ -724,7 +949,7 @@ func TestParseGameTree(t *testing.T) {
 		result, err := parser.ParseGameTree(reader)
 
 		if err != nil {
-			t.Errorf("Test %d returned error! %s", i, err.Error())
+			t.Errorf("Test %d returned error! %s; \nGiven %s, \nexpected %s", i, err.Error(), current.raw, current.parsed)
 		}
 
 		if result == nil {
@@ -732,31 +957,36 @@ func TestParseGameTree(t *testing.T) {
 			return
 		}
 
-		if !equalSequence(current.parsed.Sequence, result.Sequence) {
-			t.Errorf("Test %d failed! Given %s, \nexpected \n%#v, \nfound \n%#v", i, current.raw, current.parsed, *result)
+		if err := compareGameTree(current.parsed, *result); err != nil {
+			t.Errorf("Test %d failed. Error is %s!\nGiven %s, \nExpected \n%#v, \nfound \n%#v", i, err.Error(), current.raw, current.parsed, *result)
 		}
 	}
 }
 
-func equalProperties(p1, p2 structures.Property) bool {
-	if &p1 == &p2 {
+func compareProperties(expected, actual structures.Property) error {
+	if &expected == &actual {
 		// same object
-		return true
+		return nil
 	}
 
-	if p1.Ident != p2.Ident || len(p1.Values) != len(p2.Values) {
-		return false
+	if expected.Ident != actual.Ident {
+		return errors.New("Difference in PropIdent")
 	}
 
-	p2Matched := make([]bool, len(p2.Values))
+	expectedValLen, actualValLen := len(expected.Values), len(actual.Values)
+	if expectedValLen != actualValLen {
+		return errors.New(fmt.Sprintf("Number of PropValues differes. Expected %d, actual %d", expectedValLen, actualValLen))
+	}
 
-	for _, val1 := range p1.Values {
+	expectedMatch := make([]bool, len(expected.Values))
+
+	for _, actualVal := range expected.Values {
 		contains := false
 		// Values can be unordered
-		for i, val2 := range p2.Values {
+		for i, expectedVal := range actual.Values {
 
-			if !p2Matched[i] && val1 == val2 {
-				p2Matched[i] = true // will not check this index twice
+			if !expectedMatch[i] && actualVal == expectedVal {
+				expectedMatch[i] = true // will not check this index twice
 				contains = true
 				break
 			}
@@ -764,60 +994,107 @@ func equalProperties(p1, p2 structures.Property) bool {
 
 		// inner loop did not find a match
 		if !contains {
-			return false
+			return errors.New("PropValues differ")
 		}
 	}
 
-	return true
+	return nil
 }
 
-func equalNode(n1, n2 structures.Node) bool {
-	if &n1 == &n2 {
+func compareNode(expected, actual structures.Node) error {
+	if &expected == &actual {
 		// same object
-		return true
+		return nil
 	}
 
-	expectedLen, actualLen := len(n1.Properties), len(n2.Properties)
+	expectedLen, actualLen := len(expected.Properties), len(actual.Properties)
 	if expectedLen != actualLen {
-		return false
+		return errors.New(fmt.Sprintf("Number of properties differ. Expected %d, actual %d", expectedLen, actualLen))
 	}
-	for i, prop := range n1.Properties {
-		if !equalProperties(prop, n2.Properties[i]) {
-			return false
+	for i, prop := range expected.Properties {
+		if err := compareProperties(prop, actual.Properties[i]); err != nil {
+			return err
 		}
 	}
-	return true
+	return nil
 }
 
-func equalSequence(s1, s2 structures.Sequence) bool {
-	if &s1 == &s2 {
+func compareSequence(expected, actual structures.Sequence) error {
+	if &expected == &actual {
 		// same object
-		return true
+		return nil
 	}
 
 	// Make sure that we have the same number of nodes in the sequences
-	expectedNodesLen, actualNodesLen := len(s1.Nodes), len(s2.Nodes)
+	expectedNodesLen, actualNodesLen := len(expected.Nodes), len(actual.Nodes)
 	if expectedNodesLen != actualNodesLen {
-		return false
+		return errors.New(fmt.Sprintf("Number of Nodes differ. Expected %d, actual %d", expectedNodesLen, actualNodesLen))
 	}
 
-	for i, node := range s1.Nodes {
+	for i, node := range expected.Nodes {
 		// Make sure that we have the same number of properties in each node
-		expectedPropsLen, actualPropsLen := len(node.Properties), len(s2.Nodes[i].Properties)
-		if expectedPropsLen != actualPropsLen {
-			return false
-		}
-
-		// compare each property in each node
-		for j, prop := range node.Properties {
-			if !equalProperties(prop, s2.Nodes[i].Properties[j]) {
-				return false
-			}
+		if err := compareNode(node, actual.Nodes[i]); err != nil {
+			return err
 		}
 	}
-	return true
+	return nil
 }
 
-func getReader(raw string) *bufio.Reader {
+func compareGameTree(g1, g2 structures.GameTree) error {
+	if &g1 == &g2 {
+		//same object
+		return nil
+	}
+	if err := compareSequence(g1.Sequence, g2.Sequence); err != nil {
+		return err
+	}
+
+	expectedChildrenLen, actualChildrenLen := len(g1.Children), len(g2.Children)
+	if expectedChildrenLen != actualChildrenLen {
+		return errors.New(fmt.Sprintf("Different number of children! Expected %d, actual %d", expectedChildrenLen, actualChildrenLen))
+	}
+
+	for i, child := range g1.Children {
+		childError := compareGameTree(*child, *g2.Children[i])
+		if childError != nil {
+			return childError
+		}
+	}
+
+	return nil
+
+}
+
+func getReader(raw string) io.RuneScanner {
+	//	return EchoReader{Reader: bufio.NewReader(strings.NewReader(raw))}
 	return bufio.NewReader(strings.NewReader(raw))
+}
+
+// --------------------- DEBUGGING STUFF ------------------
+type EchoReader struct {
+	*bufio.Reader
+}
+
+func (r EchoReader) ReadRune() (char rune, size int, err error) {
+	char, size, err = r.Reader.ReadRune()
+	_, file, line, _ := runtime.Caller(1)
+	if err != nil {
+		fmt.Printf("EchoReader: error: %s\n", err.Error())
+		fmt.Printf("%s: %d\n", file, line)
+		return
+	}
+
+	fmt.Printf("EchoReader: read: %s\n", string(char))
+	fmt.Printf("%s: %d\n", file, line)
+	return
+}
+
+func (r EchoReader) UnreadRune() (err error) {
+	err = r.Reader.UnreadRune()
+	if err != nil {
+		fmt.Printf("EchoReader: error: %s\n", err.Error())
+		return
+	}
+	fmt.Println("EchoReader: unread successful!")
+	return
 }

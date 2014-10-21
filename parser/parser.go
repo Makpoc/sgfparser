@@ -1,7 +1,6 @@
 package parser
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -16,14 +15,47 @@ const (
 	uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 )
 
+var EmptyNodeError = errors.New("EmptyNode")
 var ElementEndError = errors.New("Element's end reached")
 var ParseError = errors.New("Parsing failed")
+
+func ParseCollection(reader io.RuneScanner) (*structures.Collection, error) {
+	collection := new(structures.Collection)
+
+	for {
+		// check if we are at the end of the stream
+		_, _, err := reader.ReadRune()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, err
+		}
+
+		// if the end is not reached - unread and let the gametree parser handle the next tree if any
+		err = reader.UnreadRune()
+		if err != nil {
+			return nil, err
+		}
+
+		gTree, err := ParseGameTree(reader)
+
+		if err != nil {
+			// maybe we should let this be configurable - fail the entire parsing process or just skip the current game tree
+			logger.LogError("Failed to parse game tree. Skipping it!")
+			continue
+		}
+		collection.GameTrees = append(collection.GameTrees, gTree)
+	}
+
+	return collection, nil
+}
 
 // ParseGameTree parses a game tree. This function is recursive - if there are sub trees in
 // the current game tree - it will parse them as well and attach them as children to the current tree
 //
 // GameTree = "(" Sequence { GameTree } ")"
-func ParseGameTree(reader *bufio.Reader) (*structures.GameTree, error) {
+func ParseGameTree(reader io.RuneScanner) (*structures.GameTree, error) {
 	gTree := new(structures.GameTree)
 
 	// spin to the current tree start
@@ -50,24 +82,28 @@ func ParseGameTree(reader *bufio.Reader) (*structures.GameTree, error) {
 			return nil, err
 		}
 
+		if currRune == structures.GameTreeEnd {
+			break
+		}
+
 		if currRune == structures.GameTreeStart {
+			// subtree start
 			err = reader.UnreadRune()
 			if err != nil {
 				return nil, err
 			}
+
 			subTree, err := ParseGameTree(reader)
 			if err != nil {
 				return nil, err
 			}
 
-			gTree.Children = append(gTree.Children, *subTree)
+			gTree.Children = append(gTree.Children, subTree)
 			subTree.Parent = gTree
-			break
+			continue
+			//break
 		}
 
-		if currRune == structures.GameTreeEnd {
-			break
-		}
 	}
 
 	return gTree, nil
@@ -76,7 +112,7 @@ func ParseGameTree(reader *bufio.Reader) (*structures.GameTree, error) {
 
 // ParseSequence parses a sequence of one or more nodes within a GameTree.
 // Sequence = Node { Node }
-func ParseSequence(reader *bufio.Reader) (*structures.Sequence, error) {
+func ParseSequence(reader io.RuneScanner) (*structures.Sequence, error) {
 	seq := new(structures.Sequence)
 
 	for {
@@ -87,6 +123,10 @@ func ParseSequence(reader *bufio.Reader) (*structures.Sequence, error) {
 		}
 
 		if currRune == structures.GameTreeEnd {
+			err = reader.UnreadRune()
+			if err != nil {
+				return nil, err
+			}
 			break
 		}
 
@@ -121,7 +161,7 @@ func ParseSequence(reader *bufio.Reader) (*structures.Sequence, error) {
 // ParseNode parses an entire Node with all its properties. The function will search for the first
 // node separator and parse 1 node. It will NOT consume the next node separator (if any) or the game tree end
 // Node = ";" { Property }
-func ParseNode(reader *bufio.Reader) (*structures.Node, error) {
+func ParseNode(reader io.RuneScanner) (*structures.Node, error) {
 
 	var node structures.Node
 
@@ -132,13 +172,14 @@ func ParseNode(reader *bufio.Reader) (*structures.Node, error) {
 		}
 
 		if currRune == structures.NodeSeparator {
-			// read the next rune to check whether the node contains properties. If it ends with either ; or ) - this node is empty and we will return it.
+			// read the next rune to check whether the node contains properties.
 			nextRune, _, err := reader.ReadRune()
 			if err != nil {
 				return nil, err
 			}
 
-			if nextRune == structures.NodeSeparator || nextRune == structures.GameTreeEnd {
+			// If it ends with either ";",  "(" or ")" this node is empty and we will return it.
+			if nextRune == structures.NodeSeparator || nextRune == structures.GameTreeStart || nextRune == structures.GameTreeEnd {
 				err = reader.UnreadRune()
 				if err != nil {
 					return nil, err
@@ -155,6 +196,9 @@ func ParseNode(reader *bufio.Reader) (*structures.Node, error) {
 
 			property, err := ParseProperty(reader)
 			if err != nil {
+				if err == EmptyNodeError {
+					return new(structures.Node), nil
+				}
 				return nil, err
 			}
 
@@ -163,18 +207,20 @@ func ParseNode(reader *bufio.Reader) (*structures.Node, error) {
 		}
 	}
 
-	logger.LogDebug(fmt.Sprintf("Node: Parsed %s", node))
 	return &node, nil
 }
 
 // Parses a Property. As per specification a property consist of one PropIdent and one or more unordered PropValues:
 // Property = PropIdent PropValue { PropValue }
 // TODO: In the future this method will check if the PropValue(s) have a type, suitable for the PropIdent.
-func ParseProperty(reader *bufio.Reader) (*structures.Property, error) {
+func ParseProperty(reader io.RuneScanner) (*structures.Property, error) {
 	var prop structures.Property
 
 	ident, err := ParsePropIdent(reader)
 	if err != nil {
+		if err == EmptyNodeError {
+			return nil, err
+		}
 		return nil, errors.New(fmt.Sprintf("Failed to parse Property. %s", err.Error()))
 	}
 
@@ -198,14 +244,12 @@ func ParseProperty(reader *bufio.Reader) (*structures.Property, error) {
 		prop.Values = append(prop.Values, *val)
 	}
 
-	logger.LogDebug(fmt.Sprintf("Property: Parsed %s", prop))
-
 	return &prop, nil
 }
 
 // Parses a PropIdent. As per specification PropIdent a word, containing 1 or 2 upper case letter(s). Space, tab, new line etc are also allowed.
 // Validation whether the PropIdent is known or not will not be made here!
-func ParsePropIdent(reader *bufio.Reader) (*structures.PropIdent, error) {
+func ParsePropIdent(reader io.RuneScanner) (*structures.PropIdent, error) {
 	var propIdent structures.PropIdent
 
 	for {
@@ -217,6 +261,10 @@ func ParsePropIdent(reader *bufio.Reader) (*structures.PropIdent, error) {
 		if currRune == unicode.ReplacementChar {
 			logger.LogDebug("Invalid unicode character! Skipping..")
 			continue
+		}
+
+		if currRune == structures.NodeSeparator {
+			return nil, EmptyNodeError
 		}
 
 		if currRune == structures.PropertyValueStart {
@@ -234,13 +282,10 @@ func ParsePropIdent(reader *bufio.Reader) (*structures.PropIdent, error) {
 
 	propIdent = structures.PropIdent(strings.Trim(string(propIdent), " \t\n"))
 
-	if isValid(propIdent) {
-		logger.LogDebug(fmt.Sprintf("PropIdent: Parsed %s", propIdent))
-
-		return &propIdent, nil
-	} else {
+	if !isValid(propIdent) {
 		return nil, errors.New(fmt.Sprintf("PropIdent %s is invalid!", propIdent))
 	}
+	return &propIdent, nil
 }
 
 func isValid(propIdent structures.PropIdent) bool {
@@ -276,7 +321,7 @@ func isValid(propIdent structures.PropIdent) bool {
 // Compose    = ValueType ":" ValueType
 //
 // This Parser will not recognize the Value Type, but will strip some symbols, which are common for all types (e.g. tabs will become spaces).
-func ParsePropValue(reader *bufio.Reader) (*structures.PropValue, error) {
+func ParsePropValue(reader io.RuneScanner) (*structures.PropValue, error) {
 	var propValue structures.PropValue
 
 	// seek to the first PropertyValueStart rune
@@ -299,7 +344,7 @@ func ParsePropValue(reader *bufio.Reader) (*structures.PropValue, error) {
 			if err == io.EOF {
 				break
 			} else {
-				return nil, errors.New(fmt.Sprintf("Error while parsing propIdent: %s", err.Error()))
+				return nil, ParseError
 			}
 		}
 
@@ -363,8 +408,6 @@ func ParsePropValue(reader *bufio.Reader) (*structures.PropValue, error) {
 		return nil, errors.New("Property Value seems invalid")
 	}
 
-	logger.LogDebug(fmt.Sprintf("PropValue: Parsed %s", propValue))
-
 	return &propValue, nil
 }
 
@@ -372,13 +415,10 @@ func ParsePropValue(reader *bufio.Reader) (*structures.PropValue, error) {
 // The reader is supposed to be pointing either to the end of a Property or to a place between two PropValues.
 // If it's pointing to the end of a property, this method will return ElementEndError.
 // Otherwise it will either return nil (seek successful) or another error
-func seekToNextPropValue(reader *bufio.Reader) error {
+func seekToNextPropValue(reader io.RuneScanner) error {
 	for {
 		currRune, _, err := reader.ReadRune()
 		if err != nil {
-			if err == io.EOF {
-				return ElementEndError
-			}
 			return err
 		}
 
@@ -401,5 +441,4 @@ func seekToNextPropValue(reader *bufio.Reader) error {
 	}
 
 	return errors.New("Could not find PropValue end")
-
 }
