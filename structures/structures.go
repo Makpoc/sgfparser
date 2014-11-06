@@ -72,10 +72,21 @@ func (node Node) String() string {
 	return string(NodeSeparator) + output
 }
 
+type propertyType int
+
+const (
+	move propertyType = iota
+	setup
+	root
+	gameInfo
+	none
+)
+
 // Property is the container for Property and value in SGF files. This means that property is B[xx][x] and not just B
 type Property struct {
-	Ident  PropIdent
-	Values []PropValue
+	propType propertyType
+	Ident    PropIdent
+	Values   []PropValue
 }
 
 func (prop Property) String() string {
