@@ -42,7 +42,7 @@ func ParseCollection(reader io.RuneScanner) (*structures.Collection, error) {
 
 		if err != nil {
 			// maybe we should let this be configurable - fail the entire parsing process or just skip the current game tree
-			logger.LogError("Failed to parse game tree. Skipping it!")
+			logger.LogWarn("Failed to parse game tree. Skipping it!")
 			continue
 		}
 		collection.GameTrees = append(collection.GameTrees, gTree)
@@ -103,11 +103,9 @@ func ParseGameTree(reader io.RuneScanner) (*structures.GameTree, error) {
 			continue
 			//break
 		}
-
 	}
 
 	return gTree, nil
-
 }
 
 // ParseSequence parses a sequence of one or more nodes within a GameTree.
